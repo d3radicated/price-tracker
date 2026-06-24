@@ -29,6 +29,7 @@ jobs:
         with:
           gradle-version: '9.3.1'
           cache-read-only: false
+          validate-wrappers: false
 
       - name: Prepare Environment & Secrets
         run: |
