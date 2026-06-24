@@ -27,7 +27,7 @@ abstract class PriceTrackerDatabase : RoomDatabase() {
                     PriceTrackerDatabase::class.java,
                     "price_tracker_database"
                 )
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
                 instance
