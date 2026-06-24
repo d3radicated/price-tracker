@@ -1,0 +1,8 @@
+# Treat all binary formats explicitly as binary to prevent text normalization / line ending corruption
+*.jar binary
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.keystore binary
+*.bin binary
