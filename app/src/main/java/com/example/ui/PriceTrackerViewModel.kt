@@ -292,6 +292,41 @@ class PriceTrackerViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    /**
+     * Saves a single manually entered product price transaction.
+     */
+    fun saveManualPrice(
+        merchantName: String,
+        productName: String,
+        price: Double,
+        barcode: String?,
+        unitValue: Double?,
+        unitType: String?,
+        purchaseDate: Long
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.saveReceipt(
+                    merchantName = merchantName,
+                    purchaseDate = purchaseDate,
+                    items = listOf(
+                        ReviewItem(
+                            name = productName,
+                            barcode = barcode?.ifBlank { null },
+                            price = price,
+                            quantity = 1,
+                            unitValue = unitValue,
+                            unitType = unitType?.ifBlank { null }
+                        )
+                    )
+                )
+                _statusMessage.emit("Price recorded successfully!")
+            } catch (e: Exception) {
+                _statusMessage.emit("Error saving price: ${e.localizedMessage}")
+            }
+        }
+    }
+
 
     // --- Local Backup Actions ---
 

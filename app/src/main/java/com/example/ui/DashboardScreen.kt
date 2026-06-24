@@ -28,6 +28,9 @@ import com.example.data.entity.Product
 import com.example.util.ReceiptParser
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -38,34 +41,59 @@ fun DashboardScreen(
     val receipts by viewModel.receipts.collectAsState()
     val products by viewModel.products.collectAsState()
     val priceHistory by viewModel.priceHistory.collectAsState()
+    val merchants by viewModel.merchants.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
+    var showManualEntryDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             // We use a custom inline header inside the Column for a premium, custom styled "Professional Polish" feel
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    viewModel.setScanMode(ScanMode.RECEIPT)
-                    viewModel.navigateTo(AppScreen.SCANNER)
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier
-                    .testTag("add_receipt_fab")
-                    .padding(bottom = 16.dp),
-                shape = RoundedCornerShape(16.dp)
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // Manual Price Entry secondary FAB
+                FloatingActionButton(
+                    onClick = { showManualEntryDialog = true },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.testTag("add_manual_fab"),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Scan")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Scan receipt", fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Add Price Manually")
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Add Manually", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                    }
+                }
+
+                // Primary Scan receipt FAB
+                FloatingActionButton(
+                    onClick = {
+                        viewModel.setScanMode(ScanMode.RECEIPT)
+                        viewModel.navigateTo(AppScreen.SCANNER)
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.testTag("add_receipt_fab"),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Scan")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scan receipt", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         },
@@ -284,6 +312,18 @@ fun DashboardScreen(
             }
         }
     }
+
+    if (showManualEntryDialog) {
+        ManualPriceEntryDialog(
+            onDismissRequest = { showManualEntryDialog = false },
+            onSave = { store, prod, price, bar, uVal, uType, date ->
+                viewModel.saveManualPrice(store, prod, price, bar, uVal, uType, date)
+                showManualEntryDialog = false
+            },
+            merchants = merchants,
+            products = products
+        )
+    }
 }
 
 @Composable
@@ -479,4 +519,333 @@ fun ProductCard(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ManualPriceEntryDialog(
+    onDismissRequest: () -> Unit,
+    onSave: (
+        merchantName: String,
+        productName: String,
+        price: Double,
+        barcode: String?,
+        unitValue: Double?,
+        unitType: String?,
+        purchaseDate: Long
+    ) -> Unit,
+    merchants: List<com.example.data.entity.Merchant>,
+    products: List<com.example.data.entity.Product>
+) {
+    var storeName by remember { mutableStateOf("") }
+    var productName by remember { mutableStateOf("") }
+    var priceString by remember { mutableStateOf("") }
+    var barcode by remember { mutableStateOf("") }
+    var unitValueString by remember { mutableStateOf("") }
+    var unitType by remember { mutableStateOf("") }
+    var dateSelected by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var validationError by remember { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
+    val dateFormat = remember { SimpleDateFormat("MMMM d, yyyy", Locale.US) }
+
+    // Store autocomplete list
+    val storeSuggestions = remember(storeName, merchants) {
+        if (storeName.isBlank()) emptyList()
+        else merchants.filter {
+            it.name.contains(storeName, ignoreCase = true) && 
+            !it.name.equals(storeName, ignoreCase = true)
+        }.take(3)
+    }
+
+    // Product autocomplete list
+    val productSuggestions = remember(productName, products) {
+        if (productName.isBlank()) emptyList()
+        else products.filter {
+            it.name.contains(productName, ignoreCase = true) && 
+            !it.name.equals(productName, ignoreCase = true)
+        }.take(3)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Text(
+                text = "Record Price Entry",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (validationError != null) {
+                    Text(
+                        text = validationError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Store Name Field
+                Column {
+                    OutlinedTextField(
+                        value = storeName,
+                        onValueChange = { 
+                            storeName = it
+                            validationError = null
+                        },
+                        label = { Text("Store / Merchant Name *") },
+                        modifier = Modifier.fillMaxWidth().testTag("manual_store_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) }
+                    )
+                    if (storeSuggestions.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            storeSuggestions.forEach { merchant ->
+                                SuggestionChip(
+                                    onClick = { storeName = merchant.name },
+                                    label = { Text(merchant.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Product Name Field
+                Column {
+                    OutlinedTextField(
+                        value = productName,
+                        onValueChange = { 
+                            productName = it
+                            validationError = null
+                        },
+                        label = { Text("Product Name *") },
+                        modifier = Modifier.fillMaxWidth().testTag("manual_product_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = { Icon(Icons.Default.ShoppingBag, contentDescription = null) }
+                    )
+                    if (productSuggestions.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            productSuggestions.forEach { product ->
+                                SuggestionChip(
+                                    onClick = { 
+                                        productName = product.name
+                                        // Auto-fill existing details!
+                                        if (!product.barcode.isNullOrBlank()) barcode = product.barcode
+                                        if (product.unitValue != null) unitValueString = product.unitValue.toString()
+                                        if (!product.unitType.isNullOrBlank()) unitType = product.unitType
+                                    },
+                                    label = { Text(product.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Price and Optional Barcode Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = priceString,
+                        onValueChange = { 
+                            priceString = it
+                            validationError = null
+                        },
+                        label = { Text("Price ($) *") },
+                        modifier = Modifier.weight(1f).testTag("manual_price_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal
+                        ),
+                        leadingIcon = { Icon(Icons.Default.AttachMoney, contentDescription = null) }
+                    )
+
+                    OutlinedTextField(
+                        value = barcode,
+                        onValueChange = { barcode = it },
+                        label = { Text("Barcode") },
+                        placeholder = { Text("Optional") },
+                        modifier = Modifier.weight(1.2f).testTag("manual_barcode_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = { Icon(Icons.Default.QrCode, contentDescription = null) }
+                    )
+                }
+
+                // Unit inputs
+                Text(
+                    text = "Package Unit Details (Optional)",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = unitValueString,
+                        onValueChange = { unitValueString = it },
+                        label = { Text("Unit Value") },
+                        placeholder = { Text("e.g. 500") },
+                        modifier = Modifier.weight(1f).testTag("manual_unit_value_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = unitType,
+                        onValueChange = { unitType = it },
+                        label = { Text("Unit Type") },
+                        placeholder = { Text("e.g. g, L") },
+                        modifier = Modifier.weight(1f).testTag("manual_unit_type_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // Quick unit suggestions chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("g", "kg", "L", "ml", "pcs").forEach { unit ->
+                        FilterChip(
+                            selected = unitType == unit,
+                            onClick = { unitType = unit },
+                            label = { Text(unit) }
+                        )
+                    }
+                }
+
+                // Date Selection Button
+                Surface(
+                    onClick = {
+                        val calendar = Calendar.getInstance().apply { timeInMillis = dateSelected }
+                        val datePickerDialog = android.app.DatePickerDialog(
+                            context,
+                            { _, year, month, dayOfMonth ->
+                                val newCal = Calendar.getInstance().apply {
+                                    set(Calendar.YEAR, year)
+                                    set(Calendar.MONTH, month)
+                                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                }
+                                dateSelected = newCal.timeInMillis
+                            },
+                            calendar.get(Calendar.YEAR),
+                            calendar.get(Calendar.MONTH),
+                            calendar.get(Calendar.DAY_OF_MONTH)
+                        )
+                        datePickerDialog.show()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.CalendarToday,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Date: ${dateFormat.format(Date(dateSelected))}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Text(
+                            text = "Change",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (storeName.isBlank()) {
+                        validationError = "Store / Merchant Name is required."
+                        return@Button
+                    }
+                    if (productName.isBlank()) {
+                        validationError = "Product Name is required."
+                        return@Button
+                    }
+                    val price = priceString.toDoubleOrNull()
+                    if (price == null || price <= 0) {
+                        validationError = "Please enter a valid positive price."
+                        return@Button
+                    }
+                    val unitValue = unitValueString.toDoubleOrNull()
+                    if (unitValueString.isNotBlank() && (unitValue == null || unitValue <= 0)) {
+                        validationError = "Please enter a valid positive unit value (or leave blank)."
+                        return@Button
+                    }
+
+                    onSave(
+                        storeName.trim(),
+                        productName.trim(),
+                        price,
+                        barcode.trim().ifBlank { null },
+                        unitValue,
+                        unitType.trim().ifBlank { null },
+                        dateSelected
+                    )
+                },
+                modifier = Modifier.testTag("manual_save_button")
+            ) {
+                Text("Save Price")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismissRequest,
+                modifier = Modifier.testTag("manual_cancel_button")
+            ) {
+                Text("Cancel")
+            }
+        },
+        shape = RoundedCornerShape(28.dp)
+    )
 }
