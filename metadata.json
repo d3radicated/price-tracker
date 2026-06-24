@@ -1,0 +1,6 @@
+{
+  "name": "Price Tracker",
+  "description": "A minimalist, offline-first receipt scanning and barcode price tracking application.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
